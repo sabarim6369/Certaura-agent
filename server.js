@@ -1,16 +1,75 @@
-
 const path = require('path');
 const { exec, spawn } = require('child_process');
 const WebSocket = require('ws');
 const os = require('os');
+const fs = require('fs');
 
-// const config = {
-//   wsUrl: "ws://localhost:3000/ws",
-//   labId: "6898c77f123d30902a948c0c"
-// };
+let app;
+let isElectron = false;
+
+// Detect if running inside Electron
+try {
+  app = require('electron').app;
+  isElectron = true;
+} catch (e) {
+  isElectron = false;
+}
+
+// Helper: read labId from config file
+function getLabIdFromConfig() {
+  const configPath = path.join(os.homedir(), '.certauraagent', 'config.json');
+  try {
+    const raw = fs.readFileSync(configPath, 'utf-8');
+    const json = JSON.parse(raw);
+    return json.labId || null;
+  } catch (err) {
+    console.error('Failed to read labId from config:', err.message);
+    return null;
+  }
+}
+
+// Get labId from CLI args or fallback to config file
+const args = process.argv.slice(2);
+let labId = null;
+for (const arg of args) {
+  if (arg.startsWith("--labId=")) {
+    labId = arg.split("=")[1];
+  }
+}
+
+if (!labId) {
+  labId = getLabIdFromConfig();
+}
+
+if (!labId) {
+  console.error("❌ labId argument is missing and no config found. Usage: node agent.js --labId=YOUR_LAB_ID or put labId in config file");
+  process.exit(1);
+}
+
+// Resolve paths for AutoHotkey and script depending on environment
+function getAhkPaths() {
+  if (isElectron && app) {
+    // When packaged by electron-builder, extraResources are unpacked next to executable in 'resources' folder
+    // app.getAppPath() points inside app.asar or unpacked app folder
+    // So go one level up to 'resources' folder
+    const basePath = path.resolve(app.getAppPath(), '..'); 
+
+    const autoHotkeyPath = path.join(basePath, 'tools', 'AutoHotkey64.exe');
+    const scriptPath = path.join(basePath, 'scripts', 'Block.ahk');
+    return { autoHotkeyPath, scriptPath };
+  } else {
+    // Running locally: files relative to current script dir
+    const autoHotkeyPath = path.join(__dirname, 'resources', 'tools', 'AutoHotkey64.exe');
+    const scriptPath = path.join(__dirname, 'resources', 'scripts', 'Block.ahk');
+    return { autoHotkeyPath, scriptPath };
+  }
+}
+
 const config = {
-  wsUrl: "wss://certauraserver.onrender.com/ws",
-  labId: "6898c77f123d30902a948c0c"
+  // wsUrl: "wss://certauraserver.onrender.com/ws",
+  wsUrl: "ws://localhost:3000/ws",
+  labId: labId
+  // labId: "6898c77f123d30902a948c0c"
 };
 
 let blockProcess = null;
@@ -26,7 +85,7 @@ function connectWebSocket() {
       deviceId: os.hostname(),
       labId: config.labId,
       hostname: os.hostname(),
-      ip: '192.168.x.x'
+      ip: '192.168.x.x' // Improve this to get actual IP if needed
     };
     ws.send(JSON.stringify(registerPayload));
   });
@@ -40,8 +99,7 @@ function connectWebSocket() {
         console.log(`🚀 Starting exam: ${cmd.url}`);
 
         if (!blockProcess) {
-          const autoHotkeyPath = path.join(__dirname, 'resources', 'tools', 'AutoHotkey64.exe');
-          const scriptPath = path.join(__dirname, 'resources', 'scripts', 'Block.ahk');
+          const { autoHotkeyPath, scriptPath } = getAhkPaths();
 
           blockProcess = spawn(autoHotkeyPath, [scriptPath]);
 

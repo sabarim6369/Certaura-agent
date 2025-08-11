@@ -26,6 +26,16 @@
     "files": [
       "**/*"
     ],
+      "extraResources": [
+    {
+      "from": "resources/tools/AutoHotkey64.exe",
+      "to": "tools/AutoHotkey64.exe"
+    },
+    {
+      "from": "resources/scripts/Block.ahk",
+      "to": "scripts/Block.ahk"
+    }
+  ],
     "directories": {
       "buildResources": "build"
     },

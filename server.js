@@ -398,7 +398,16 @@ function getAhkPaths() {
     return { autoHotkeyPath, scriptPath };
   }
 }
+function hasChromeProfile() {
+  const profilePath = path.join(os.homedir(), "AppData", "Local", "Google", "Chrome", "User Data");
+  if (!fs.existsSync(profilePath)) return false;
 
+  // Look for Default profile folder or any "Profile X" folder
+  const dirs = fs.readdirSync(profilePath).filter(d => 
+    d.toLowerCase() === "default" || /^profile\s\d+$/i.test(d)
+  );
+  return dirs.length > 0;
+}
 // Detect Chrome executable path
 function getChromePath() {
   const possiblePaths = [
@@ -462,11 +471,19 @@ function connectWebSocket() {
         exec(`taskkill /F /IM chrome.exe`, () => {
           console.log("🛑 Chrome closed");
 
-          const chromePath = getChromePath();
-          if (!chromePath) return;
+        const chromePath = getChromePath();
+if (!chromePath) return;
 
-       exec(`${chromePath} --kiosk --incognito --no-first-run --disable-translate ${cmd.url}`, () => {
-  console.log("✅ Chrome started in kiosk mode");
+let chromeArgs = "";
+if (hasChromeProfile()) {
+  chromeArgs = `--kiosk --incognito --no-first-run --disable-translate ${cmd.url}`;
+} else {
+  chromeArgs = `--guest --kiosk --no-first-run --disable-translate -- ${cmd.url}`;
+}
+
+
+exec(`${chromePath} ${chromeArgs}`, () => {
+  console.log(`✅ Chrome started in kiosk ${hasChromeProfile() ? "profile" : "guest"} mode`);
 
   setTimeout(() => {
     const ahkScript = `
@@ -478,7 +495,7 @@ function connectWebSocket() {
     const tempAhkFile = path.join(os.tmpdir(), "focusChrome.ahk");
     fs.writeFileSync(tempAhkFile, ahkScript, "utf-8");
     spawn(ahkPath, [tempAhkFile]);
-  }, 1500); // wait 1.5 sec before focusing
+  }, 1500);
 });
 
         });
